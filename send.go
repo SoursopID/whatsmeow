@@ -82,6 +82,8 @@ type MessageDebugTimings struct {
 	Send  time.Duration
 	Resp  time.Duration
 	Retry time.Duration
+
+	Devices int
 }
 
 func (mdt MessageDebugTimings) MarshalZerologObject(evt *zerolog.Event) {
@@ -140,6 +142,10 @@ type SendRequestExtra struct {
 	Timeout time.Duration
 	// When sending media to newsletters, the Handle field returned by the file upload.
 	MediaHandle string
+
+	// Specify target jid for encrypted messages
+	// If present and not empty, the message is encrypted for the specified jid
+	TargetJID []types.JID
 }
 
 // SendMessage sends the given message.
@@ -294,7 +300,7 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 	var data []byte
 	switch to.Server {
 	case types.GroupServer, types.BroadcastServer:
-		phash, data, err = cli.sendGroup(ctx, to, ownID, req.ID, message, &resp.DebugTimings, botNode)
+		phash, data, err = cli.sendGroup(ctx, to, ownID, req.ID, message, &resp.DebugTimings, botNode, req)
 	case types.DefaultUserServer:
 		if req.Peer {
 			data, err = cli.sendPeerMessage(to, req.ID, message, &resp.DebugTimings)
@@ -605,14 +611,24 @@ func (cli *Client) sendNewsletter(to types.JID, id types.MessageID, message *waE
 	return data, nil
 }
 
-func (cli *Client) sendGroup(ctx context.Context, to, ownID types.JID, id types.MessageID, message *waE2E.Message, timings *MessageDebugTimings, botNode *waBinary.Node) (string, []byte, error) {
+func (cli *Client) sendGroup(ctx context.Context, to, ownID types.JID, id types.MessageID, message *waE2E.Message, timings *MessageDebugTimings, botNode *waBinary.Node, reqs ...SendRequestExtra) (string, []byte, error) {
 	var participants []types.JID
 	var err error
 	start := time.Now()
 	if to.Server == types.GroupServer {
-		participants, err = cli.getGroupMembers(ctx, to)
-		if err != nil {
-			return "", nil, fmt.Errorf("failed to get group members: %w", err)
+		if len(reqs) > 0 {
+			for _, req := range reqs {
+				if len(req.TargetJID) > 0 {
+					participants = append(participants, req.TargetJID...)
+				}
+			}
+		}
+
+		if len(participants) == 0 {
+			participants, err = cli.getGroupMembers(ctx, to)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to get group members: %w", err)
+			}
 		}
 	} else {
 		// TODO use context
@@ -659,6 +675,8 @@ func (cli *Client) sendGroup(ctx context.Context, to, ownID types.JID, id types.
 	if err != nil {
 		return "", nil, err
 	}
+
+	timings.Devices = len(allDevices)
 
 	phash := participantListHashV2(allDevices)
 	node.Attrs["phash"] = phash
