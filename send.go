@@ -284,7 +284,7 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 
 	respChan := cli.waitResponse(req.ID)
 	// Peer message retries aren't implemented yet
-	if !req.Peer {
+	if !req.Peer || len(req.TargetJID) > 0 {
 		cli.addRecentMessage(to, req.ID, message, nil)
 	}
 
