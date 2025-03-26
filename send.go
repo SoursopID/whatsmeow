@@ -301,7 +301,7 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 	switch to.Server {
 	case types.GroupServer, types.BroadcastServer:
 		phash, data, err = cli.sendGroup(ctx, to, ownID, req.ID, message, &resp.DebugTimings, botNode, req)
-	case types.DefaultUserServer:
+	case types.DefaultUserServer, types.BotServer:
 		if req.Peer {
 			data, err = cli.sendPeerMessage(to, req.ID, message, &resp.DebugTimings)
 		} else {
@@ -594,8 +594,10 @@ func (cli *Client) sendNewsletter(to types.JID, id types.MessageID, message *waE
 		Content: plaintext,
 		Attrs:   waBinary.Attrs{},
 	}
-	if mediaType := getMediaTypeFromMessage(message); mediaType != "" {
-		plaintextNode.Attrs["mediatype"] = mediaType
+	if message != nil {
+		if mediaType := getMediaTypeFromMessage(message); mediaType != "" {
+			plaintextNode.Attrs["mediatype"] = mediaType
+		}
 	}
 	node := waBinary.Node{
 		Tag:     "message",
@@ -1011,6 +1013,7 @@ func marshalMessage(to types.JID, message *waE2E.Message) (plaintext, dsmPlainte
 				DestinationJID: proto.String(to.String()),
 				Message:        message,
 			},
+			MessageContextInfo: message.MessageContextInfo,
 		})
 		if err != nil {
 			err = fmt.Errorf("failed to marshal message (for own devices): %w", err)
