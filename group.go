@@ -580,6 +580,11 @@ func parseParticipant(childAG *waBinary.AttrUtility, child *waBinary.Node) types
 		LID:          childAG.OptionalJIDOrEmpty("lid"),
 		DisplayName:  childAG.OptionalString("display_name"),
 	}
+	phoneNumber := childAG.OptionalJIDOrEmpty("phone_number")
+	if !phoneNumber.IsEmpty() {
+		participant.LID = participant.JID
+		participant.JID = phoneNumber
+	}
 	if participant.JID.Server == types.HiddenUserServer && participant.LID.IsEmpty() {
 		participant.LID = participant.JID
 		//participant.JID = types.EmptyJID
