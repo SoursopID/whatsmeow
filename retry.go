@@ -26,6 +26,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waMsgApplication"
 	"go.mau.fi/whatsmeow/proto/waMsgTransport"
+	"go.mau.fi/whatsmeow/store/cache"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
@@ -36,6 +37,10 @@ const recentMessagesSize = 256
 type recentMessageKey struct {
 	To types.JID
 	ID types.MessageID
+}
+
+func (k recentMessageKey) String() string {
+	return k.To.String() + "_" + k.ID
 }
 
 type RecentMessage struct {
@@ -59,12 +64,28 @@ func (cli *Client) addRecentMessage(to types.JID, id types.MessageID, wa *waE2E.
 	if cli.recentMessagesPtr >= len(cli.recentMessagesList) {
 		cli.recentMessagesPtr = 0
 	}
+	if cache.DefaultSentCache != nil && wa != nil {
+		err := cache.DefaultSentCache.Set(key.String(), wa)
+		if err != nil {
+			cli.Log.Errorf("failed to cache sent message: %v %v", key, err)
+		}
+	}
 	cli.recentMessagesLock.Unlock()
 }
 
 func (cli *Client) getRecentMessage(to types.JID, id types.MessageID) RecentMessage {
 	cli.recentMessagesLock.RLock()
-	msg, _ := cli.recentMessagesMap[recentMessageKey{to, id}]
+	key := recentMessageKey{to, id}
+	msg, _ := cli.recentMessagesMap[key]
+	if cache.DefaultSentCache != nil && msg.wa == nil {
+		if m, err := cache.DefaultSentCache.Get(key.String()); err != nil {
+			cli.Log.Errorf("failed to get cached sent message: %s %v", key, err)
+		} else {
+			if m != nil {
+				msg.wa = m
+			}
+		}
+	}
 	cli.recentMessagesLock.RUnlock()
 	return msg
 }
